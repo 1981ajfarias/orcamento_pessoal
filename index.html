@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#020617">
+    <meta name="description" content="Controle suas rendas, despesas, dívidas e reserva de emergência.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Orçamento">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./icons/icon-192.png" type="image/png">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
+    <title>Orçamento Financeiro Pessoal</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        border: 'hsl(217.2 32.6% 17.5%)',
+                        background: 'hsl(222.2 84% 4.9%)',
+                        foreground: 'hsl(210 40% 98%)',
+                        card: { DEFAULT: 'hsl(222.2 84% 4.9%)', foreground: 'hsl(210 40% 98%)' },
+                        primary: { DEFAULT: 'hsl(142.1 70.6% 45.3%)', foreground: 'hsl(144.9 80.4% 10%)' }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Supabase JS Client CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+      :root { color-scheme: dark; }
+      * { -webkit-tap-highlight-color: transparent; }
+      html { min-height: 100%; scroll-behavior: smooth; }
+      body { padding-bottom: env(safe-area-inset-bottom); }
+      button, input, select { min-height: 42px; }
+      button { touch-action: manipulation; }
+      input, select { max-width: 100%; font-size: 16px !important; }
+      canvas { max-width: 100%; }
+      .nav-btn { flex: 0 0 auto; white-space: nowrap; }
+      #appContainer { min-width: 0; }
+      main, nav, header, header > div { min-width: 0; }
+      @media (max-width: 767px) {
+        header { position: sticky; }
+        header > div { height: auto !important; min-height: 64px; padding-top: 10px; padding-bottom: 10px; flex-wrap: wrap; gap: 10px; }
+        header > div > div:first-child { flex: 1 1 65%; }
+        header > div > div:first-child span { font-size: 14px; line-height: 1.25; }
+        header > div > div:nth-child(2) { order: 3; width: 100%; overflow-x: auto; }
+        header > div > div:nth-child(2) select { flex: 1 1 0; min-width: 0; }
+        header > div > div:last-child { margin-left: auto; }
+        #appContainer > div { padding-left: 12px !important; padding-right: 12px !important; padding-top: 16px !important; gap: 14px !important; }
+        nav { gap: 8px !important; margin-right: -2px; }
+        .nav-btn { padding: 10px 12px !important; font-size: 12px !important; }
+        main { width: 100%; }
+        .tab-content > div, main > div > div { min-width: 0; }
+        .grid { min-width: 0; }
+        .grid > div { min-width: 0; }
+        .bg-slate-900.border.border-slate-800.p-5 { padding: 14px !important; }
+        #authScreen > div { padding: 22px !important; }
+        #authScreen { overflow-y: auto; }
+        #categoryChart { max-height: 260px; }
+        #content-emergency .border-t { gap: 12px; flex-wrap: wrap; }
+        #content-emergency .border-t > div { min-width: 28%; }
+        #content-incomes form, #content-expenses form, #content-debts form { grid-template-columns: minmax(0, 1fr) !important; }
+        #content-incomes form > *, #content-expenses form > *, #content-debts form > * { width: 100%; min-width: 0; }
+      }
+      @media (min-width: 768px) and (max-width: 1100px) {
+        #appContainer > div { gap: 16px !important; }
+        nav { width: 190px !important; }
+        .nav-btn { padding-left: 10px !important; padding-right: 10px !important; }
+      }
+      @media (display-mode: standalone) {
+        header { padding-top: env(safe-area-inset-top); }
+      }
+    </style>
+
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col antialiased">
+
+    <!-- TELA DE LOGIN / AUTENTICAÇÃO -->
+    <div id="authScreen" class="fixed inset-0 bg-slate-950 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md w-full space-y-6 shadow-2xl">
+            <div class="text-center space-y-2">
+                <div class="inline-flex p-3 bg-emerald-500/10 text-emerald-400 rounded-xl mb-1">
+                    <i data-lucide="shield-check" class="w-8 h-8"></i>
+                </div>
+                <h1 class="text-xl font-bold text-slate-100">Orçamento Financeiro Pessoal</h1>
+                <p id="authSubtitle" class="text-xs text-slate-400">Entre com sua conta</p>
+            </div>
+
+            <form id="authForm" onsubmit="handleAuth(event)" class="space-y-4">
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">E-mail</label>
+                    <input type="email" id="authEmail" required placeholder="" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">Senha</label>
+                    <input type="password" id="authPassword" required placeholder="" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                </div>
+                <button type="submit" id="authSubmitBtn" class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold py-2.5 rounded-lg text-sm transition-colors">Entrar</button>
+            </form>
+
+            <div class="text-center">
+                <button onclick="toggleAuthMode()" id="authToggleBtn" class="text-xs text-emerald-400 hover:underline">Não tem uma conta? Cadastre-se</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- APLICAÇÃO PRINCIPAL (Oculta até fazer login) -->
+    <div id="appContainer" class="flex flex-col min-h-screen">
+        <!-- HEADER / NAVIGATION -->
+        <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0 z-40">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                        <i data-lucide="wallet" class="w-6 h-6"></i>
+                    </div>
+                    <span class="font-bold text-lg text-slate-100 tracking-tight">Orçamento Financeiro Pessoal</span>
+                </div>
+
+                <!-- FILTROS DE DATA -->
+                <div class="flex items-center space-x-3 bg-slate-900 p-1.5 rounded-lg border border-slate-800">
+                    <div class="flex items-center space-x-2 text-slate-400 text-xs px-2">
+                        <i data-lucide="filter" class="w-4 h-4"></i>
+                        <span class="hidden sm:inline">Período:</span>
+                    </div>
+                    <select id="filterMonth" onchange="renderApp()" class="bg-slate-800 text-slate-200 text-xs font-medium rounded-md px-2.5 py-1.5 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                        <option value="ALL">Todos os Meses</option>
+                        <option value="0">Janeiro</option><option value="1">Fevereiro</option><option value="2">Março</option><option value="3">Abril</option><option value="4">Maio</option><option value="5">Junho</option><option value="6">Julho</option><option value="7">Agosto</option><option value="8">Setembro</option><option value="9">Outubro</option><option value="10">Novembro</option><option value="11">Dezembro</option>
+                    </select>
+                    <select id="filterYear" onchange="renderApp()" class="bg-slate-800 text-slate-200 text-xs font-medium rounded-md px-2.5 py-1.5 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                        <option value="ALL">Todos os Anos</option>
+                        <option value="2024">2024</option><option value="2025">2025</option><option value="2026">2026</option><option value="2027">2027</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <button onclick="handleLogout()" class="p-2 text-rose-400 hover:bg-slate-800 rounded-lg transition-colors" title="Sair da Conta">
+                        <i data-lucide="log-out" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full flex flex-col md:flex-row gap-6">
+            <!-- MENU LATERAL -->
+            <nav class="w-full md:w-64 flex md:flex-col gap-1 overflow-x-auto pb-2 md:pb-0">
+                <button onclick="switchTab('dashboard')" id="tab-dashboard" class="nav-btn active flex items-center space-x-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all bg-emerald-500/10 text-emerald-400">
+                    <i data-lucide="layout-dashboard" class="w-4 h-4"></i><span>Visão Geral</span>
+                </button>
+                <button onclick="switchTab('incomes')" id="tab-incomes" class="nav-btn flex items-center space-x-3 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-900 transition-all">
+                    <i data-lucide="trending-up" class="w-4 h-4"></i><span>Fontes de Renda</span>
+                </button>
+                <button onclick="switchTab('expenses')" id="tab-expenses" class="nav-btn flex items-center space-x-3 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-900 transition-all">
+                    <i data-lucide="receipt" class="w-4 h-4"></i><span>Despesas & Orçamento</span>
+                </button>
+                <button onclick="switchTab('debts')" id="tab-debts" class="nav-btn flex items-center space-x-3 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-900 transition-all">
+                    <i data-lucide="alert-triangle" class="w-4 h-4"></i><span>Mapeamento de Dívidas</span>
+                </button>
+                <button onclick="switchTab('emergency')" id="tab-emergency" class="nav-btn flex items-center space-x-3 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-900 transition-all">
+                    <i data-lucide="shield-check" class="w-4 h-4"></i><span>Reserva de Emergência</span>
+                </button>
+            </nav>
+
+            <!-- CONTEÚDO PRINCIPAL -->
+            <main class="flex-1 space-y-6">
+                <!-- ABA: VISÃO GERAL -->
+                <div id="content-dashboard" class="tab-content space-y-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl">
+                            <span class="text-xs font-medium uppercase tracking-wider text-slate-400">Renda Total</span>
+                            <p id="totalIncomesCard" class="text-2xl font-bold text-emerald-400 mt-2">R$ 0,00</p>
+                        </div>
+                        <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl">
+                            <span class="text-xs font-medium uppercase tracking-wider text-slate-400">Despesas Totais</span>
+                            <p id="totalExpensesCard" class="text-2xl font-bold text-rose-400 mt-2">R$ 0,00</p>
+                        </div>
+                        <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl">
+                            <span class="text-xs font-medium uppercase tracking-wider text-slate-400">Saldo do Período</span>
+                            <p id="balanceCard" class="text-2xl font-bold text-slate-100 mt-2">R$ 0,00</p>
+                        </div>
+                        <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl">
+                            <span class="text-xs font-medium uppercase tracking-wider text-slate-400">Total de Dívidas</span>
+                            <p id="totalDebtsCard" class="text-2xl font-bold text-amber-400 mt-2">R$ 0,00</p>
+                        </div>
+                    </div>
+
+                    <!-- WIDGET RESERVA -->
+                    <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="font-semibold text-slate-200 flex items-center space-x-2"><i data-lucide="shield-check" class="w-5 h-5 text-emerald-400"></i><span>Reserva de Emergência</span></h3>
+                            <button onclick="switchTab('emergency')" class="text-xs text-emerald-400 hover:underline">Gerenciar</button>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                            <div><p class="text-xs text-slate-400">Atual</p><p id="dashEmergencyCurrent" class="text-xl font-bold text-slate-100">R$ 0,00</p></div>
+                            <div><p class="text-xs text-slate-400">Meta</p><p id="dashEmergencyTarget" class="text-xl font-bold text-slate-400">R$ 0,00</p></div>
+                            <div>
+                                <div class="flex justify-between text-xs mb-1"><span class="text-slate-400">Progresso</span><span id="dashEmergencyPercent" class="font-semibold text-emerald-400">0%</span></div>
+                                <div class="w-full bg-slate-800 rounded-full h-2"><div id="dashEmergencyBar" class="bg-emerald-500 h-2 rounded-full" style="width: 0%"></div></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl"><h3 class="font-semibold text-slate-200 text-sm mb-4">Gastos por Categoria</h3><div class="h-64 flex items-center justify-center"><canvas id="categoryChart"></canvas></div></div>
+                        <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl"><h3 class="font-semibold text-slate-200 text-sm mb-4">Dívidas Prioritárias</h3><div id="topDebtsList" class="space-y-3"></div></div>
+                    </div>
+                </div>
+
+                <!-- ABA: RENDA -->
+                <div id="content-incomes" class="tab-content hidden space-y-6">
+                    <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl">
+                        <h3 class="font-semibold text-slate-200 text-sm mb-4">Adicionar Renda</h3>
+                        <form id="incomeForm" onsubmit="addIncome(event)" class="grid grid-cols-1 sm:grid-cols-5 gap-4">
+                            <input type="text" id="incName" required placeholder="Descrição" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100">
+                            <select id="incType" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100"><option>Salário Líquido</option><option>Renda Extra</option></select>
+                            <input type="number" step="0.01" id="incValue" required placeholder="Valor" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100">
+                            <input type="date" id="incDate" required class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100">
+                            <button type="submit" class="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold py-2 px-4 rounded-lg text-sm">Adicionar</button>
+                        </form>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-x-auto">
+                        <table class="w-full min-w-[620px] text-left text-sm text-slate-300"><thead class="bg-slate-950/50 text-slate-400 text-xs uppercase"><tr><th class="px-4 py-3">Data</th><th class="px-4 py-3">Descrição</th><th class="px-4 py-3">Tipo</th><th class="px-4 py-3">Valor</th><th class="px-4 py-3 text-right">Ação</th></tr></thead><tbody id="incomeTableBody" class="divide-y divide-slate-800"></tbody></table>
+                    </div>
+                </div>
+
+                <!-- ABA: DESPESAS -->
+                <div id="content-expenses" class="tab-content hidden space-y-6">
+                    <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl">
+                        <h3 class="font-semibold text-slate-200 text-sm mb-4">Adicionar Despesa</h3>
+                        <form id="expenseForm" onsubmit="addExpense(event)" class="grid grid-cols-1 sm:grid-cols-6 gap-4">
+                            <input type="text" id="expName" required placeholder="Descrição" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100">
+                            <select id="expCategory" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100"><option>Aluguel/Moradia</option><option>Alimentação</option><option>Transporte</option><option>Lazer</option><option>Farmácia</option><option>Outros</option></select>
+                            <input type="number" step="0.01" id="expValue" required placeholder="Valor" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100">
+                            <select id="expStatus" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100"><option>Em Aberto</option><option>Pendente</option><option>Pago</option></select>
+                            <input type="date" id="expDate" required class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100">
+                            <button type="submit" class="bg-rose-500 hover:bg-rose-600 text-white font-semibold py-2 px-4 rounded-lg text-sm">Adicionar</button>
+                        </form>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-x-auto">
+                        <table class="w-full min-w-[620px] text-left text-sm text-slate-300"><thead class="bg-slate-950/50 text-slate-400 text-xs uppercase"><tr><th class="px-4 py-3">Data</th><th class="px-4 py-3">Descrição</th><th class="px-4 py-3">Categoria</th><th class="px-4 py-3">Valor</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Ação</th></tr></thead><tbody id="expenseTableBody" class="divide-y divide-slate-800"></tbody></table>
+                    </div>
+                </div>
+
+                <!-- ABA: DÍVIDAS -->
+                <div id="content-debts" class="tab-content hidden space-y-6">
+                    <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl">
+                        <h3 class="font-semibold text-slate-200 text-sm mb-4">Mapear Dívida</h3>
+                        <form id="debtForm" onsubmit="addDebt(event)" class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                            <input type="text" id="debtCreditor" required placeholder="Credor" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100">
+                            <select id="debtType" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100"><option>Cartão de Crédito</option><option>Empréstimo Pessoal</option></select>
+                            <input type="number" step="0.01" id="debtOriginal" required placeholder="Valor Original" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100">
+                            <input type="number" step="0.01" id="debtAmount" required placeholder="Valor Atual" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100">
+                            <input type="number" step="0.01" id="debtInterest" required placeholder="Juros %/mês" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100">
+                            <input type="text" id="debtInstallments" placeholder="Parcelas" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100">
+                            <select id="debtStatus" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100"><option>Em Aberto</option><option>Quitada</option></select>
+                            <select id="debtPriority" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100"><option>Alta (Juros Altos)</option><option>Média</option></select>
+                            <div class="sm:col-span-4 flex justify-end"><button type="submit" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold py-2 px-6 rounded-lg text-sm">Cadastrar Dívida</button></div>
+                        </form>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-x-auto">
+                        <table class="w-full min-w-[760px] text-left text-sm text-slate-300"><thead class="bg-slate-950/50 text-slate-400 text-xs uppercase"><tr><th class="px-4 py-3">Credor</th><th class="px-4 py-3">Tipo</th><th class="px-4 py-3">Original/Atual</th><th class="px-4 py-3">Juros</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Prioridade</th><th class="px-4 py-3 text-right">Ação</th></tr></thead><tbody id="debtTableBody" class="divide-y divide-slate-800"></tbody></table>
+                    </div>
+                </div>
+
+                <!-- ABA: RESERVA -->
+                <div id="content-emergency" class="tab-content hidden space-y-6">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 p-5 rounded-xl space-y-4">
+                            <h3 class="font-semibold text-slate-200">Reserva de Emergência</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div><label class="text-xs text-slate-400 block mb-1">Custo Mensal</label><input type="number" step="0.01" id="emgMonthlyExpense" oninput="updateEmergencyCalc()" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100"></div>
+                                <div><label class="text-xs text-slate-400 block mb-1">Meses</label><select id="emgMonths" onchange="updateEmergencyCalc()" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100"><option value="3">3 Meses</option><option value="6" selected>6 Meses</option><option value="12">12 Meses</option></select></div>
+                            </div>
+                            <div class="border-t border-slate-800 pt-4 flex justify-between">
+                                <div><p class="text-xs text-slate-400">Meta</p><p id="emgTargetCalculated" class="text-xl font-bold text-emerald-400">R$ 0,00</p></div>
+                                <div><p class="text-xs text-slate-400">Guardado</p><p id="emgCurrentSaved" class="text-xl font-bold text-slate-100">R$ 0,00</p></div>
+                                <div><p class="text-xs text-slate-400">Falta</p><p id="emgRemaining" class="text-xl font-bold text-amber-400">R$ 0,00</p></div>
+                            </div>
+                        </div>
+                        <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl space-y-3">
+                            <h4 class="font-semibold text-slate-200 text-sm">Aporte / Resgate</h4>
+                            <input type="number" step="0.01" id="emgOpValue" placeholder="0,00" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100">
+                            <div class="flex space-x-2">
+                                <button onclick="handleEmergencyDeposit()" class="flex-1 bg-emerald-500 text-slate-950 font-semibold py-2 rounded-lg text-xs">Guardar</button>
+                                <button onclick="handleEmergencyWithdraw()" class="flex-1 bg-rose-500 text-white font-semibold py-2 rounded-lg text-xs">Resgatar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- SCRIPT DE LÓGICA E AUTOMAÇÃO COM SUPABASE AUTH -->
+    <script>
+        // ⚠️ INSIRA SUAS CREDENCIAIS DO SUPABASE AQUI DIRETAMENTE PARA ATIVAR O LOGIN
+        const SUPABASE_URL = "https://zfpadbjasszzolwdnexn.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpmcGFkYmphc3N6em9sd2RuZXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3MTI2OTcsImV4cCI6MjA5NjI4ODY5N30.lSShadiUGT-TaG1uIx5u2dfkXCD8uJ7-bK6CcNNQh6c";
+
+        let supabaseClient = null;
+        let currentUser = null;
+        let chartInstance = null;
+        let isSignUpMode = false;
+
+        let state = { incomes: [], expenses: [], debts: [], emergency: { current_amount: 0, target_months: 6, manual_expense: 0 } };
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            if (SUPABASE_URL.startsWith("SUA_")) {
+                alert("Por favor, configure sua URL e Chave Anon do Supabase no código JavaScript do HTML.");
+                return;
+            }
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            
+            // Verificar sessão ativa
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            handleSession(session);
+
+            supabaseClient.auth.onAuthStateChange((event, session) => {
+                handleSession(session);
+            });
+
+            setCurrentDateInputs();
+        });
+
+        function handleSession(session) {
+            const authScreen = document.getElementById('authScreen');
+            const appContainer = document.getElementById('appContainer');
+
+            if (session) {
+                currentUser = session.user;
+                authScreen.classList.add('hidden');
+                appContainer.classList.remove('hidden');
+                loadUserData();
+            } else {
+                currentUser = null;
+                appContainer.classList.add('hidden');
+                authScreen.classList.remove('hidden');
+                authScreen.classList.add('flex');
+            }
+        }
+
+        function toggleAuthMode() {
+            isSignUpMode = !isSignUpMode;
+            document.getElementById('authSubtitle').innerText = isSignUpMode ? "Crie uma nova conta para começar" : "Entre com sua conta para acessar seus dados financeiros";
+            document.getElementById('authSubmitBtn').innerText = isSignUpMode ? "Cadastrar" : "Entrar";
+            document.getElementById('authToggleBtn').innerText = isSignUpMode ? "Já tem uma conta? Faça login" : "Não tem uma conta? Cadastre-se";
+        }
+
+        async function handleAuth(e) {
+            e.preventDefault();
+            const email = document.getElementById('authEmail').value;
+            const password = document.getElementById('authPassword').value;
+
+            if (isSignUpMode) {
+                const { error } = await supabaseClient.auth.signUp({ email, password });
+                if (error) alert("Erro ao cadastrar: " + error.message);
+                else alert("Cadastro realizado! Verifique seu e-mail ou faça login.");
+            } else {
+                const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+                if (error) alert("Erro ao entrar: " + error.message);
+            }
+        }
+
+        async function handleLogout() {
+            await supabaseClient.auth.signOut();
+        }
+
+        function setCurrentDateInputs() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('incDate').value = today;
+            document.getElementById('expDate').value = today;
+        }
+
+        async function loadUserData() {
+            if (!supabaseClient || !currentUser) return;
+            try {
+                const { data: incs } = await supabaseClient.from('incomes').select('*');
+                const { data: exps } = await supabaseClient.from('expenses').select('*');
+                const { data: dbts } = await supabaseClient.from('debts').select('*');
+                const { data: emg } = await supabaseClient.from('emergency_fund').select('*').maybeSingle();
+
+                if (incs) state.incomes = incs;
+                if (exps) state.expenses = exps;
+                if (dbts) state.debts = dbts;
+                if (emg) state.emergency = emg;
+            } catch (err) { console.error("Erro ao carregar dados", err); }
+            renderApp();
+        }
+
+        function renderApp() {
+            const monthFilter = document.getElementById('filterMonth').value;
+            const yearFilter = document.getElementById('filterYear').value;
+
+            const filteredIncomes = state.incomes.filter(item => filterByDate(item.date, monthFilter, yearFilter));
+            const filteredExpenses = state.expenses.filter(item => filterByDate(item.date, monthFilter, yearFilter));
+
+            const totalIncomes = filteredIncomes.reduce((acc, curr) => acc + Number(curr.amount), 0);
+            const totalExpenses = filteredExpenses.reduce((acc, curr) => acc + Number(curr.amount), 0);
+            const balance = totalIncomes - totalExpenses;
+            const totalDebts = state.debts.reduce((acc, curr) => acc + Number(curr.amount), 0);
+
+            document.getElementById('totalIncomesCard').innerText = formatCurrency(totalIncomes);
+            document.getElementById('totalExpensesCard').innerText = formatCurrency(totalExpenses);
+            document.getElementById('balanceCard').innerText = formatCurrency(balance);
+            document.getElementById('totalDebtsCard').innerText = formatCurrency(totalDebts);
+
+            renderIncomesTable(filteredIncomes);
+            renderExpensesTable(filteredExpenses);
+            renderDebtsTable(state.debts);
+            renderTopDebts(state.debts);
+            updateEmergencyUI(totalExpenses);
+            renderCategoryChart(filteredExpenses);
+
+            lucide.createIcons();
+        }
+
+        function filterByDate(dateStr, month, year) {
+            if (!dateStr) return true;
+            const d = new Date(dateStr);
+            return (month === 'ALL' || d.getMonth() === parseInt(month)) && (year === 'ALL' || d.getFullYear() === parseInt(year));
+        }
+
+        function renderIncomesTable(data) {
+            document.getElementById('incomeTableBody').innerHTML = data.map(item => `
+                <tr class="hover:bg-slate-900/50"><td class="px-4 py-3">${formatDate(item.date)}</td><td class="px-4 py-3 font-medium text-slate-100">${item.description}</td><td class="px-4 py-3">${item.type}</td><td class="px-4 py-3 text-emerald-400 font-semibold">${formatCurrency(item.amount)}</td><td class="px-4 py-3 text-right"><button onclick="deleteIncome('${item.id}')" class="text-slate-500 hover:text-rose-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>
+            `).join('');
+        }
+
+        function renderExpensesTable(data) {
+            document.getElementById('expenseTableBody').innerHTML = data.map(item => `
+                <tr class="hover:bg-slate-900/50"><td class="px-4 py-3">${formatDate(item.date)}</td><td class="px-4 py-3 font-medium text-slate-100">${item.description}</td><td class="px-4 py-3">${item.category}</td><td class="px-4 py-3 text-rose-400 font-semibold">${formatCurrency(item.amount)}</td><td class="px-4 py-3">${item.status}</td><td class="px-4 py-3 text-right"><button onclick="deleteExpense('${item.id}')" class="text-slate-500 hover:text-rose-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>
+            `).join('');
+        }
+
+        function renderDebtsTable(data) {
+            document.getElementById('debtTableBody').innerHTML = data.map(item => `
+                <tr class="hover:bg-slate-900/50"><td class="px-4 py-3 font-medium text-slate-100">${item.creditor}</td><td class="px-4 py-3">${item.type}</td><td class="px-4 py-3">${formatCurrency(item.amount)}</td><td class="px-4 py-3 text-rose-400 font-bold">${item.interest_rate}%</td><td class="px-4 py-3">${item.status}</td><td class="px-4 py-3">${item.priority}</td><td class="px-4 py-3 text-right"><button onclick="deleteDebt('${item.id}')" class="text-slate-500 hover:text-rose-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>
+            `).join('');
+        }
+
+        function renderTopDebts(data) {
+            const sorted = [...data].sort((a, b) => b.interest_rate - a.interest_rate).slice(0, 3);
+            document.getElementById('topDebtsList').innerHTML = sorted.length ? sorted.map(d => `
+                <div class="p-3 bg-slate-950 rounded-lg border border-slate-800 flex justify-between items-center"><span class="text-xs font-medium text-slate-200">${d.creditor}</span><span class="text-xs font-bold text-amber-400">${formatCurrency(d.amount)}</span></div>
+            `).join('') : '<p class="text-xs text-slate-500 text-center py-2">Nenhuma dívida.</p>';
+        }
+
+        function updateEmergencyUI(currentFilteredExpenses) {
+            const baseExpense = state.emergency.manual_expense > 0 ? state.emergency.manual_expense : currentFilteredExpenses;
+            document.getElementById('emgMonthlyExpense').value = baseExpense || '';
+            const months = parseInt(document.getElementById('emgMonths').value || state.emergency.target_months);
+            const target = baseExpense * months;
+            const current = Number(state.emergency.current_amount || 0);
+            const remaining = Math.max(0, target - current);
+            const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+
+            document.getElementById('emgTargetCalculated').innerText = formatCurrency(target);
+            document.getElementById('emgCurrentSaved').innerText = formatCurrency(current);
+            document.getElementById('emgRemaining').innerText = formatCurrency(remaining);
+            document.getElementById('dashEmergencyCurrent').innerText = formatCurrency(current);
+            document.getElementById('dashEmergencyTarget').innerText = formatCurrency(target);
+            document.getElementById('dashEmergencyPercent').innerText = `${pct}%`;
+            document.getElementById('dashEmergencyBar').style.width = `${pct}%`;
+        }
+
+        function updateEmergencyCalc() {
+            state.emergency.manual_expense = parseFloat(document.getElementById('emgMonthlyExpense').value) || 0;
+            state.emergency.target_months = parseInt(document.getElementById('emgMonths').value);
+            syncEmergencyData();
+            renderApp();
+        }
+
+        async function handleEmergencyDeposit() {
+            const val = parseFloat(document.getElementById('emgOpValue').value);
+            if (val > 0) { state.emergency.current_amount = Number(state.emergency.current_amount) + val; document.getElementById('emgOpValue').value = ''; await syncEmergencyData(); renderApp(); }
+        }
+
+        async function handleEmergencyWithdraw() {
+            const val = parseFloat(document.getElementById('emgOpValue').value);
+            if (val > 0) { state.emergency.current_amount = Math.max(0, Number(state.emergency.current_amount) - val); document.getElementById('emgOpValue').value = ''; await syncEmergencyData(); renderApp(); }
+        }
+
+        async function syncEmergencyData() {
+            if (!supabaseClient || !currentUser) return;
+            await supabaseClient.from('emergency_fund').upsert({ user_id: currentUser.id, ...state.emergency });
+        }
+
+        async function addIncome(e) {
+            e.preventDefault();
+            const newItem = { user_id: currentUser.id, description: document.getElementById('incName').value, type: document.getElementById('incType').value, amount: parseFloat(document.getElementById('incValue').value), date: document.getElementById('incDate').value };
+            const { data } = await supabaseClient.from('incomes').insert([newItem]).select();
+            if (data) state.incomes.push(data[0]);
+            document.getElementById('incomeForm').reset(); setCurrentDateInputs(); renderApp();
+        }
+
+        async function deleteIncome(id) {
+            state.incomes = state.incomes.filter(i => i.id !== id);
+            await supabaseClient.from('incomes').delete().eq('id', id); renderApp();
+        }
+
+        async function addExpense(e) {
+            e.preventDefault();
+            const newItem = { user_id: currentUser.id, description: document.getElementById('expName').value, category: document.getElementById('expCategory').value, amount: parseFloat(document.getElementById('expValue').value), status: document.getElementById('expStatus').value, date: document.getElementById('expDate').value };
+            const { data } = await supabaseClient.from('expenses').insert([newItem]).select();
+            if (data) state.expenses.push(data[0]);
+            document.getElementById('expenseForm').reset(); setCurrentDateInputs(); renderApp();
+        }
+
+        async function deleteExpense(id) {
+            state.expenses = state.expenses.filter(i => i.id !== id);
+            await supabaseClient.from('expenses').delete().eq('id', id); renderApp();
+        }
+
+        async function addDebt(e) {
+            e.preventDefault();
+            const newItem = { user_id: currentUser.id, creditor: document.getElementById('debtCreditor').value, type: document.getElementById('debtType').value, original_amount: parseFloat(document.getElementById('debtOriginal').value), amount: parseFloat(document.getElementById('debtAmount').value), interest_rate: parseFloat(document.getElementById('debtInterest').value), installments: document.getElementById('debtInstallments').value, status: document.getElementById('debtStatus').value, priority: document.getElementById('debtPriority').value };
+            const { data } = await supabaseClient.from('debts').insert([newItem]).select();
+            if (data) state.debts.push(data[0]);
+            document.getElementById('debtForm').reset(); renderApp();
+        }
+
+        async function deleteDebt(id) {
+            state.debts = state.debts.filter(i => i.id !== id);
+            await supabaseClient.from('debts').delete().eq('id', id); renderApp();
+        }
+
+        function renderCategoryChart(expenses) {
+            const ctx = document.getElementById('categoryChart').getContext('2d');
+            const cats = ['Aluguel/Moradia', 'Alimentação', 'Transporte', 'Lazer', 'Farmácia', 'Outros'];
+            const totals = cats.map(c => expenses.filter(e => e.category === c).reduce((a, b) => a + Number(b.amount), 0));
+            if (chartInstance) chartInstance.destroy();
+            chartInstance = new Chart(ctx, { type: 'doughnut', data: { labels: cats, datasets: [{ data: totals, backgroundColor: ['#38bdf8', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#64748b'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#94a3b8', font: { size: 10 } } } } } });
+        }
+
+        function switchTab(id) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('bg-emerald-500/10', 'text-emerald-400'));
+            document.getElementById(`content-${id}`).classList.remove('hidden');
+            document.getElementById(`tab-${id}`).classList.add('bg-emerald-500/10', 'text-emerald-400');
+        }
+
+        function formatCurrency(val) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0); }
+        function formatDate(str) { if (!str) return '-'; const [y, m, d] = str.split('-'); return `${d}/${m}/${y}`; }
+    </script>
+
+    <script>
+      // Registra o Service Worker para permitir a instalação como PWA.
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./service-worker.js").catch((error) => {
+            console.warn("Não foi possível registrar o Service Worker:", error);
+          });
+        });
+      }
+    </script>
+
+</body>
+</html>
